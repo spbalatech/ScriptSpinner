@@ -82,6 +82,26 @@ export default function Home() {
   const [selectedModel, setSelectedModel] = useState<string>('gpt-4')
   const [showApiConfig, setShowApiConfig] = useState(true)
 
+  // Log provider changes
+  useEffect(() => {
+    const logData = {
+      provider: selectedProvider,
+      model: selectedModel,
+      hasApiKey: apiKey.length > 0,
+      apiKeyLength: apiKey.length,
+      timestamp: new Date().toISOString()
+    }
+    
+    // ⚠️ SECURITY WARNING: Only for debugging! NEVER log actual API keys in production!
+    // Enable this by setting localStorage.setItem('DEBUG_API_KEYS', 'true') in browser console
+    if (typeof window !== 'undefined' && localStorage.getItem('DEBUG_API_KEYS') === 'true' && apiKey.length > 0) {
+      console.warn('🔑 DEBUG MODE - FULL API KEY:', apiKey)
+      console.warn('🔑 API Key Length:', apiKey.length, 'characters')
+    }
+    
+    console.log('🔧 Provider Configuration:', logData)
+  }, [selectedProvider, selectedModel, apiKey])
+
   // Update prompt preview in real-time
   useEffect(() => {
     if (scriptData.topic || scriptData.hook || scriptData.style) {
@@ -108,6 +128,15 @@ export default function Home() {
       setShowSuggestions(true)
       setLoadingSuggestions(true)
       
+      // Log the request
+      console.log('📝 Requesting suggestions:', {
+        query: query,
+        provider: selectedProvider,
+        model: selectedModel,
+        hasApiKey: apiKey.length > 0,
+        timestamp: new Date().toISOString()
+      })
+      
       try {
         const response = await axios.post('http://localhost:8000/get-suggestions', {
           query: query,
@@ -119,6 +148,11 @@ export default function Home() {
         
         if (response.data.success) {
           setSuggestions(response.data.suggestions)
+          console.log('✅ Suggestions received:', {
+            count: response.data.suggestions.length,
+            provider: selectedProvider,
+            model: selectedModel
+          })
         }
       } catch (error) {
         console.error('Error fetching suggestions:', error)
@@ -160,6 +194,19 @@ export default function Home() {
 
   const generateScript = async () => {
     setIsGenerating(true)
+    
+    // Log the script generation request
+    console.log('🎬 Generating script:', {
+      topic: scriptData.topic,
+      refinedTopic: scriptData.refinedTopic,
+      hook: scriptData.hook,
+      style: scriptData.style,
+      provider: selectedProvider,
+      model: selectedModel,
+      hasApiKey: apiKey.length > 0,
+      timestamp: new Date().toISOString()
+    })
+    
     try {
       const response = await axios.post('http://localhost:8000/generate-script', {
         topic: scriptData.topic,
@@ -174,6 +221,12 @@ export default function Home() {
       if (response.data.success) {
         setScriptData(prev => ({ ...prev, script: response.data.script }))
         setCurrentStep(5)
+        console.log('✅ Script generated successfully:', {
+          provider: selectedProvider,
+          model: selectedModel,
+          scriptLength: response.data.script.length,
+          message: response.data.message
+        })
       } else {
         throw new Error(response.data.message || 'Failed to generate script')
       }

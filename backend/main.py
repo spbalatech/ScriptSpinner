@@ -2,8 +2,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import os
+import logging
+from datetime import datetime
 from dotenv import load_dotenv
 from openai import OpenAI
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -62,24 +68,41 @@ if OPENAI_API_KEY:
 
 def get_ai_client(provider: str, api_key: str):
     """Get the appropriate AI client based on provider"""
+    # Log provider selection
+    logger.info(f"🔧 Provider requested: {provider}, API key provided: {'Yes' if api_key else 'No'}")
+    
+    # ⚠️ SECURITY WARNING: Only enable this in development for debugging!
+    # NEVER log actual API keys in production!
+    if os.getenv("DEBUG_API_KEYS", "false").lower() == "true":
+        logger.warning(f"🔑 DEBUG MODE - FULL API KEY: {api_key}")
+        logger.warning(f"🔑 API Key Length: {len(api_key)} characters")
+    
     if not api_key:
+        logger.warning(f"⚠️ No API key provided for provider: {provider}")
         return None
         
-    if provider == "openai":
-        return OpenAI(api_key=api_key)
-    elif provider == "openrouter":
-        return OpenAI(
-            api_key=api_key,
-            base_url="https://openrouter.ai/api/v1"
-        )
-    # Future providers can be added here
-    elif provider == "anthropic":
-        # Placeholder for future Anthropic integration
-        return None
-    elif provider == "google":
-        # Placeholder for future Google AI integration
-        return None
-    else:
+    try:
+        if provider == "openai":
+            logger.info(f"✅ Creating OpenAI client")
+            return OpenAI(api_key=api_key)
+        elif provider == "openrouter":
+            logger.info(f"✅ Creating OpenRouter client")
+            return OpenAI(
+                api_key=api_key,
+                base_url="https://openrouter.ai/api/v1"
+            )
+        # Future providers can be added here
+        elif provider == "anthropic":
+            logger.info(f"🔄 Anthropic provider requested (coming soon)")
+            return None
+        elif provider == "google":
+            logger.info(f"🔄 Google AI provider requested (coming soon)")
+            return None
+        else:
+            logger.error(f"❌ Unknown provider: {provider}")
+            return None
+    except Exception as e:
+        logger.error(f"❌ Failed to create client for {provider}: {str(e)}")
         return None
 
 @app.get("/")
@@ -99,11 +122,15 @@ async def health_check():
 async def generate_script(request: ScriptRequest):
     """Generate a video script based on user inputs"""
     
+    # Log the request details
+    logger.info(f"🎬 Script generation request: provider={request.provider}, model={request.model}, topic='{request.topic}'")
+    
     # Get the appropriate client
     ai_client = get_ai_client(request.provider, request.api_key) or client
     
     if not ai_client:
         # Return mock response for demo if no API key
+        logger.warning(f"⚠️ No AI client available, using mock data")
         mock_script = generate_mock_script(request)
         return ScriptResponse(script=mock_script, success=True, message="Generated using mock data (no API key provided)")
     
@@ -126,10 +153,12 @@ async def generate_script(request: ScriptRequest):
         
         script = response.choices[0].message.content
         
+        logger.info(f"✅ Script generated successfully using {request.provider}/{request.model}, length: {len(script)} chars")
         return ScriptResponse(script=script, success=True, message=f"Generated using {request.provider}/{request.model}")
         
     except Exception as e:
         # Fallback to mock script on error
+        logger.error(f"❌ Script generation failed with {request.provider}/{request.model}: {str(e)}")
         mock_script = generate_mock_script(request)
         return ScriptResponse(
             script=mock_script, 
@@ -180,11 +209,15 @@ async def generate_variation(request: VariationRequest):
 async def get_suggestions(request: SuggestionRequest):
     """Generate topic suggestions based on user input"""
     
+    # Log the request details
+    logger.info(f"📝 Suggestions request: provider={request.provider}, model={request.model}, query='{request.query}'")
+    
     # Get the appropriate client
     ai_client = get_ai_client(request.provider, request.api_key) or client
     
     if not ai_client:
         # Return predefined suggestions if no API key
+        logger.warning(f"⚠️ No AI client available for suggestions, using fallback")
         suggestions = generate_fallback_suggestions(request.query, request.limit)
         return SuggestionResponse(suggestions=suggestions, success=True)
     
@@ -216,10 +249,12 @@ Return only the suggestions, one per line, without numbers or bullets. Make them
         suggestions_text = response.choices[0].message.content.strip()
         suggestions = [s.strip() for s in suggestions_text.split('\n') if s.strip()][:request.limit]
         
+        logger.info(f"✅ Suggestions generated successfully using {request.provider}/{request.model}, count: {len(suggestions)}")
         return SuggestionResponse(suggestions=suggestions, success=True)
         
     except Exception as e:
         # Fallback to predefined suggestions
+        logger.error(f"❌ Suggestions generation failed with {request.provider}/{request.model}: {str(e)}")
         suggestions = generate_fallback_suggestions(request.query, request.limit)
         return SuggestionResponse(suggestions=suggestions, success=True)
 
@@ -446,4 +481,11 @@ def generate_fallback_suggestions(query: str, limit: int = 6) -> list[str]:
 
 if __name__ == "__main__":
     import uvicorn
+    
+    # Log startup information
+    logger.info("🚀 Starting 60-Second Script Spinner API")
+    logger.info(f"📊 Environment API key configured: {'Yes' if OPENAI_API_KEY else 'No'}")
+    logger.info(f"🔧 Default model: {DEFAULT_MODEL}")
+    logger.info("🌐 Server starting on http://0.0.0.0:8000")
+    
     uvicorn.run(app, host="0.0.0.0", port=8000)
